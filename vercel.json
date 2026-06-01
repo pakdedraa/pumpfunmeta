@@ -10,7 +10,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https://YOUR_BACKEND_HOST https://hermes.pyth.network https://api.mainnet-beta.solana.com https://api.helius.xyz https://www.google-analytics.com wss://*.solana.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: blob:; font-src 'self' data:; connect-src 'self' https://pumpfunmeta-production.up.railway.app https://hermes.pyth.network https://api.mainnet-beta.solana.com https://api.helius.xyz https://www.google-analytics.com wss://*.solana.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';"
         },
         {
           "key": "X-Frame-Options",
@@ -51,7 +51,7 @@
   "rewrites": [
     {
       "source": "/api/:splat*",
-      "destination": "https://YOUR_BACKEND_HOST/api/:splat*"
+      "destination": "https://pumpfunmeta-production.up.railway.app/api/:splat*"
     },
     {
       "source": "/(.*)",

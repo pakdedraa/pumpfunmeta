@@ -471,11 +471,11 @@ function SignalHistoryModal({ signal, trade, onClose }) {
                       </strong>
                     </div>
                   )}
-                  {trade.peakPrice && trade.peakPrice > signal.entry && (
+                  {trade.peakPrice && trade.peakPrice > (trade?.entry || signal.entry || 0) && (
                     <div>
                       <span style={{ color: 'var(--muted)', display: 'block' }}>Peak</span>
                       <strong style={{ color: 'var(--cyan)' }}>
-                        +{(((trade.peakPrice - signal.entry) / signal.entry) * 100).toFixed(1)}%
+                        +{(((trade.peakPrice - (trade?.entry || signal.entry)) / (trade?.entry || signal.entry)) * 100).toFixed(1)}%
                       </strong>
                     </div>
                   )}
@@ -484,13 +484,13 @@ function SignalHistoryModal({ signal, trade, onClose }) {
             </div>
           )}
 
-          {/* Entry Levels */}
+          {/* Entry Levels — pakai trade object (karena ini trade history, bukan sinyal live) */}
           <div style={{ marginBottom: 20 }}>
             <h4 style={{ fontSize: 14, margin: '0 0 12px', color: 'var(--soft)' }}>Entry & Levels</h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
               <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Entry Price</span>
-                <strong style={{ fontSize: 15, color: 'var(--soft)' }}>{signal.entry ? formatUsd(signal.entry) : '-'}</strong>
+                <strong style={{ fontSize: 15, color: 'var(--soft)' }}>{(trade?.entry || signal.entry) ? formatUsd(trade?.entry || signal.entry) : '-'}</strong>
               </div>
               <div style={{ padding: 12, background: 'var(--bg-secondary)', borderRadius: 6 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Liquidity</span>
@@ -499,14 +499,14 @@ function SignalHistoryModal({ signal, trade, onClose }) {
               <div style={{ padding: 12, background: 'rgba(22,163,74,0.1)', borderRadius: 6, border: '1px solid rgba(22,163,74,0.2)' }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Take Profit</span>
                 <strong style={{ fontSize: 15, color: 'var(--green)' }}>
-                  {signal.tpPct ? `+${signal.tpPct.toFixed(1)}%` : '-'}
+                  {(trade?.tpPct || signal.tpPct) ? `+${(trade?.tpPct || signal.tpPct).toFixed(1)}%` : '-'}
                 </strong>
-                {signal.tp && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(signal.tp)}</span>}
+                {(trade?.tp || signal.tp) && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(trade?.tp || signal.tp)}</span>}
               </div>
               <div style={{ padding: 12, background: 'rgba(220,38,38,0.1)', borderRadius: 6, border: '1px solid rgba(220,38,38,0.2)' }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Stop Loss</span>
                 <strong style={{ fontSize: 15, color: 'var(--red)' }}>
-                  {signal.slPct ? `-${signal.slPct.toFixed(1)}%` : '-'}
+                  {(trade?.slPct || signal.slPct) ? `-${(trade?.slPct || signal.slPct).toFixed(1)}%` : '-'}
                 </strong>
                 {signal.sl && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(signal.sl)}</span>}
               </div>

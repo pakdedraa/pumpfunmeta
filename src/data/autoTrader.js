@@ -86,7 +86,11 @@ export function formatUsd(value) {
   if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(num >= 10_000_000 ? 0 : 1)}M`;
   if (num >= 1_000) return `$${(num / 1_000).toFixed(num >= 100_000 ? 0 : 1)}K`;
   if (num < 0.01) {
-    const s = num.toFixed(10).replace(/0+$/, '').replace(/\.$/, '');
+    // Presisi adaptif untuk harga memecoin yang sangat kecil. toFixed(10) statis
+    // membulatkan harga < 1e-10 menjadi "$0" sehingga "harga live" terlihat tidak
+    // konsisten antar token; di sini desimal mengikuti besaran angka.
+    const decimals = Math.min(15, Math.max(6, Math.ceil(-Math.log10(num)) + 3));
+    const s = num.toFixed(decimals).replace(/0+$/, '').replace(/\.$/, '');
     return `$${s}`;
   }
   return `$${num.toFixed(num >= 10 ? 0 : 2)}`;

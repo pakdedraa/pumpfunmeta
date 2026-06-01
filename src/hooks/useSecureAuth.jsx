@@ -15,7 +15,7 @@ import { SecureStorage } from '../utils/encryption';
 
 const AuthContext = createContext(null);
 
-const SOLANA_RPC = import.meta.env.VITE_SOLANA_RPC || 'https://api.mainnet-beta.solana.com';
+const SOLANA_RPC = import.meta.env.VITE_SOLANA_RPC || 'https://rpc.ankr.com/solana';
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 menit
 const BALANCE_REFRESH_INTERVAL = 30 * 1000; // 30 detik
 

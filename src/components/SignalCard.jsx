@@ -40,15 +40,25 @@ export default function SignalCard({ signal, trade, onClick }) {
 
   // Level dikunci pakai nilai trade saat sudah entry; kalau belum, pakai sinyal.
   const entry = trade?.entry ?? signal.entry;
-  const slPct = trade?.slPct ?? signal.slPct;
-  const tpPct = trade?.tpPct ?? signal.tpPct;
+  const sl = trade?.sl ?? signal.sl;
+  const tp = trade?.tp ?? signal.tp;
+  // Persen SL/TP diturunkan dari harga aktual vs entry supaya SELALU sinkron dengan
+  // angka harga — penting saat exit engine menggeser SL ke breakeven/trailing
+  // (trade.sl berubah tapi trade.slPct dikunci di nilai awal → bisa berbeda).
+  const slDistPct = entry && sl ? ((sl - entry) / entry) * 100
+    : ((trade?.slPct ?? signal.slPct) != null ? -Math.abs(trade?.slPct ?? signal.slPct) : null);
+  const tpDistPct = entry && tp ? ((tp - entry) / entry) * 100
+    : ((trade?.tpPct ?? signal.tpPct) != null ? Math.abs(trade?.tpPct ?? signal.tpPct) : null);
   const livePnl = trade
     ? trade.pnlPct
     : (entry && signal.priceUsd ? ((signal.priceUsd - entry) / entry) * 100 : null);
 
-  const meta = GRADE_META[signal.grade] || { cls: '', caption: '', color: 'var(--muted)' };
+  // Untuk posisi aktif, tampilkan grade original saat entry (bukan re-evaluasi live)
+  // supaya Beranda dan Sinyal & Posisi selalu sinkron.
+  const displayGrade = trade?.status === 'ACTIVE' ? trade.grade : signal.grade;
+  const meta = GRADE_META[displayGrade] || { cls: '', caption: '', color: 'var(--muted)' };
   const chip = statusChip(trade);
-  const isHighRisk = signal.grade === 'B';
+  const isHighRisk = displayGrade === 'B';
   const chartUrl = signal.url || `https://dexscreener.com/solana/${signal.ca}`;
   const conf = Math.max(0, Math.min(100, Number(signal.confidence) || 0));
 
@@ -73,7 +83,7 @@ export default function SignalCard({ signal, trade, onClick }) {
           <span>{signal.name}</span>
         </div>
         <div className="sc-grade">
-          <span className="badge" style={gradeStyle(signal.grade)} title={`Grade ${signal.grade} — ${meta.caption}`}>{signal.grade}</span>
+          <span className="badge" style={gradeStyle(displayGrade)} title={`Grade ${displayGrade} — ${meta.caption}`}>{displayGrade}</span>
           <small style={{ color: meta.color }}>{meta.caption}</small>
         </div>
       </div>
@@ -139,8 +149,8 @@ export default function SignalCard({ signal, trade, onClick }) {
       <div className="sc-levels">
         <div className="sc-level"><span>Harga</span><strong>{formatUsd(signal.priceUsd)}</strong></div>
         <div className="sc-level"><span>Entry</span><strong>{entry ? formatUsd(entry) : '-'}</strong></div>
-        <div className="sc-level"><span>Stop Loss</span><strong className="text-red">{entry ? `-${slPct}%` : '-'}</strong></div>
-        <div className="sc-level"><span>Take Profit</span><strong className="text-green">{entry ? `+${tpPct}%` : '-'}</strong></div>
+        <div className="sc-level"><span>Stop Loss</span><strong className={slDistPct != null && slDistPct >= 0 ? 'text-green' : 'text-red'}>{entry && slDistPct != null ? `${slDistPct >= 0 ? '+' : ''}${slDistPct.toFixed(1)}%` : '-'}</strong></div>
+        <div className="sc-level"><span>Take Profit</span><strong className="text-green">{entry && tpDistPct != null ? `+${tpDistPct.toFixed(1)}%` : '-'}</strong></div>
       </div>
 
       <div className="sc-meta">

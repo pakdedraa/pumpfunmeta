@@ -279,7 +279,7 @@ export default function PerformancePanel({ stats, trades = [], signalHistory = [
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
                             {pnl >= 0 ? <TrendingUp size={14} style={{ color: 'var(--green)' }} /> : <TrendingDown size={14} style={{ color: 'var(--red)' }} />}
                             <strong style={{ color: pnl >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                              {pnl >= 0 ? '+' : ''}{pnl.toFixed(1)}%
+                              {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)}%
                             </strong>
                             {status && (
                               <span style={{
@@ -330,6 +330,22 @@ function SignalHistoryModal({ signal, trade, onClose }) {
   const ex = signal.explain || {};
   const pnl = trade?.pnlPct || null;
   const status = trade?.status;
+
+  // Persen SL/TP diturunkan dari harga aktual vs entry agar sinkron dengan nilai harga
+  // (SL bisa sudah digeser ke breakeven/trailing pada trade yang sudah selesai).
+  const entry = trade?.entry || signal.entry;
+  const slPrice = trade?.sl || signal.sl;
+  const tpPrice = trade?.tp || signal.tp;
+  const slDistPct = entry && slPrice ? ((slPrice - entry) / entry) * 100
+    : ((trade?.slPct || signal.slPct) ? -Math.abs(trade?.slPct || signal.slPct) : null);
+  const tpDistPct = entry && tpPrice ? ((tpPrice - entry) / entry) * 100
+    : ((trade?.tpPct || signal.tpPct) ? Math.abs(trade?.tpPct || signal.tpPct) : null);
+  const fmtSigned = (v) => v == null ? '-' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
+
+  // Chart embed mengikuti sumber yang sama dengan pair DexScreener token (alamat pair
+  // dari signal.url lebih akurat dari CA token), konsisten dengan tampilan detail lain.
+  const chartUrl = signal.url || `https://dexscreener.com/solana/${signal.ca}`;
+  const chartEmbedUrl = `${chartUrl.includes('dexscreener.com') ? chartUrl : `https://dexscreener.com/solana/${signal.ca}`}${chartUrl.includes('?') ? '&' : '?'}embed=1&theme=dark&info=0`;
 
   return (
     <div
@@ -421,7 +437,7 @@ function SignalHistoryModal({ signal, trade, onClose }) {
           {/* DexScreener Chart Embed */}
           <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--bg-secondary)' }}>
             <iframe
-              src={`https://dexscreener.com/solana/${signal.ca}?embed=1&theme=dark&info=0`}
+              src={chartEmbedUrl}
               title="DexScreener Chart"
               style={{ width: '100%', height: 380, border: 'none', display: 'block' }}
               sandbox="allow-scripts allow-same-origin"
@@ -499,16 +515,16 @@ function SignalHistoryModal({ signal, trade, onClose }) {
               <div style={{ padding: 12, background: 'rgba(22,163,74,0.1)', borderRadius: 6, border: '1px solid rgba(22,163,74,0.2)' }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Take Profit</span>
                 <strong style={{ fontSize: 15, color: 'var(--green)' }}>
-                  {(trade?.tpPct || signal.tpPct) ? `+${(trade?.tpPct || signal.tpPct).toFixed(1)}%` : '-'}
+                  {tpDistPct != null ? fmtSigned(tpDistPct) : '-'}
                 </strong>
-                {(trade?.tp || signal.tp) && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(trade?.tp || signal.tp)}</span>}
+                {tpPrice && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(tpPrice)}</span>}
               </div>
               <div style={{ padding: 12, background: 'rgba(220,38,38,0.1)', borderRadius: 6, border: '1px solid rgba(220,38,38,0.2)' }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>Stop Loss</span>
-                <strong style={{ fontSize: 15, color: 'var(--red)' }}>
-                  {(trade?.slPct || signal.slPct) ? `-${(trade?.slPct || signal.slPct).toFixed(1)}%` : '-'}
+                <strong style={{ fontSize: 15, color: slDistPct != null && slDistPct >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {slDistPct != null ? fmtSigned(slDistPct) : '-'}
                 </strong>
-                {signal.sl && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(signal.sl)}</span>}
+                {slPrice && <span style={{ fontSize: 10, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{formatUsd(slPrice)}</span>}
               </div>
             </div>
           </div>

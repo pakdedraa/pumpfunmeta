@@ -43,17 +43,32 @@ export default function SignalDetail({ signal, trade, onClose }) {
   const ex = signal.explain || {};
   const verdictColor = VERDICT_COLOR[ex.verdict?.tone] || 'var(--cyan)';
 
+  // Grade: pakai original trade grade untuk posisi aktif supaya sinkron antar tab.
+  const displayGrade = trade?.status === 'ACTIVE' ? trade.grade : signal.grade;
+
   // Level dikunci pakai nilai trade saat sudah entry.
   const entry = trade?.entry ?? signal.entry;
   const sl = trade?.sl ?? signal.sl;
   const tp = trade?.tp ?? signal.tp;
   const slPct = trade?.slPct ?? signal.slPct;
   const tpPct = trade?.tpPct ?? signal.tpPct;
+  // Persen SL/TP diturunkan dari harga aktual vs entry agar konsisten dengan nilai
+  // harga yang ditampilkan (SL bisa bergeser ke breakeven/trailing oleh exit engine).
+  const slDistPct = entry && sl ? ((sl - entry) / entry) * 100 : (slPct != null ? -Math.abs(slPct) : null);
+  const tpDistPct = entry && tp ? ((tp - entry) / entry) * 100 : (tpPct != null ? Math.abs(tpPct) : null);
+  const fmtSigned = (v) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
   const livePnl = trade
     ? trade.pnlPct
     : (entry && signal.priceUsd ? ((signal.priceUsd - entry) / entry) * 100 : null);
 
   const chartUrl = signal.url || `https://dexscreener.com/solana/${signal.ca}`;
+  // Chart embed mengikuti sumber yang sama dengan tombol "Chart": kalau signal.url
+  // sudah berupa pair DexScreener, pakai itu (alamat pair lebih akurat dari CA token)
+  // supaya chart yang ter-embed dan yang dibuka tombol konsisten.
+  const chartEmbedUrl = (() => {
+    const base = chartUrl.includes('dexscreener.com') ? chartUrl : `https://dexscreener.com/solana/${signal.ca}`;
+    return `${base}${base.includes('?') ? '&' : '?'}embed=1&theme=dark&info=0`;
+  })();
   const copyCa = async () => {
     try {
       await navigator.clipboard.writeText(signal.ca);
@@ -71,7 +86,7 @@ export default function SignalDetail({ signal, trade, onClose }) {
             <div className="sd-title">
               <strong>${signal.ticker}</strong>
               <span className="badge" style={{ background: `${verdictColor}22`, color: verdictColor, border: `1px solid ${verdictColor}55` }}>
-                {signal.grade}
+                {displayGrade}
               </span>
             </div>
             <span className="sd-sub">{signal.name}</span>
@@ -91,7 +106,7 @@ export default function SignalDetail({ signal, trade, onClose }) {
         {/* DexScreener Chart Embed */}
         <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--bg-secondary)', marginBottom: 16 }}>
           <iframe
-            src={`https://dexscreener.com/solana/${signal.ca}?embed=1&theme=dark&info=0`}
+            src={chartEmbedUrl}
             title="DexScreener Chart"
             style={{ width: '100%', height: 340, border: 'none', display: 'block' }}
             sandbox="allow-scripts allow-same-origin"
@@ -113,11 +128,11 @@ export default function SignalDetail({ signal, trade, onClose }) {
 
         {/* TL;DR pills */}
         <div className="sd-pills">
-          <span className="sd-pill" style={{ color: signal.grade === 'B' ? 'var(--amber)' : 'var(--green)' }}>
-            {signal.grade === 'B' ? 'High Risk' : 'Layak Entry'}
+          <span className="sd-pill" style={{ color: displayGrade === 'B' ? 'var(--amber)' : 'var(--green)' }}>
+            {displayGrade === 'B' ? 'High Risk' : 'Layak Entry'}
           </span>
           {(ex.slTpRationale?.rr || signal.rr) && <span className="sd-pill">R:R 1:{ex.slTpRationale?.rr || signal.rr}</span>}
-          <span className="sd-pill">SL -{slPct}% · TP +{tpPct}%</span>
+          <span className="sd-pill">SL {fmtSigned(slDistPct)} · TP {fmtSigned(tpDistPct)}</span>
           <span className="sd-pill" style={{ color: RISK_COLOR[ex.riskNarrative?.level] || 'var(--muted)' }}>
             Risiko rug: {ex.riskNarrative?.level || '—'}
           </span>
@@ -160,8 +175,8 @@ export default function SignalDetail({ signal, trade, onClose }) {
               <span>{trade?.entries && trade.entries.length > 1 ? 'Avg Entry' : 'Entry'}</span>
               <strong>{entry ? formatUsd(entry) : '-'}</strong>
             </div>
-            <div className="sd-levelbox"><span>Stop Loss</span><strong className="text-red">{sl ? formatUsd(sl) : '-'}<small> -{slPct}%</small></strong></div>
-            <div className="sd-levelbox"><span>Take Profit</span><strong className="text-green">{tp ? formatUsd(tp) : '-'}<small> +{tpPct}%</small></strong></div>
+            <div className="sd-levelbox"><span>Stop Loss</span><strong className={slDistPct != null && slDistPct >= 0 ? 'text-green' : 'text-red'}>{sl ? formatUsd(sl) : '-'}<small> {fmtSigned(slDistPct)}</small></strong></div>
+            <div className="sd-levelbox"><span>Take Profit</span><strong className="text-green">{tp ? formatUsd(tp) : '-'}<small> {fmtSigned(tpDistPct)}</small></strong></div>
             <div className="sd-levelbox"><span>PnL Berjalan</span><strong className={livePnl == null ? 'text-muted' : livePnl >= 0 ? 'text-green' : 'text-red'}>{livePnl == null ? '—' : `${livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}%`}</strong></div>
             <div className="sd-levelbox"><span>Status</span><strong style={{ color: trade?.status === 'WIN' ? 'var(--green)' : trade?.status === 'LOSS' ? 'var(--red)' : trade?.status === 'ACTIVE' ? 'var(--cyan)' : 'var(--muted)' }}>{trade?.status || (signal.tracked ? 'SIAP' : 'PENDING')}</strong></div>
           </div>

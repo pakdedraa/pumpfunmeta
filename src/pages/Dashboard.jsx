@@ -638,7 +638,7 @@ function PositionRow({ trade, onClick }) {
         </div>
       </div>
       <div className={`cp-pnl ${up ? 'up' : 'down'}`}>
-        {up ? '+' : ''}{pnl.toFixed(1)}%
+        {up ? '+' : ''}{pnl.toFixed(2)}%
       </div>
     </button>
   );

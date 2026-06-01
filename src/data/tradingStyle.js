@@ -131,7 +131,16 @@ export function momentumScore(signal, style) {
 
   // Bonus momentum jangka pendek (style hyper lebih sensitif ke m5)
   const m5Weight = style.id === 'hyper' ? 1.4 : style.id === 'balanced' ? 1.0 : 0.6;
-  const momentum = m5 * m5Weight + Math.max(-20, Math.min(40, h1)) * 0.25;
+  // Momentum SWEET-SPOT: hadiah naik untuk m5 sehat (s.d. ~12%) lalu MENURUN untuk
+  // m5 parabolik. Sebelumnya hadiah m5 linear tanpa batas → agent selalu memilih
+  // token yang paling baru pump (entry di pucuk) sehingga koreksi normal langsung
+  // kena SL. Kurva ini lebih memilih momentum yang masih punya ruang naik.
+  const healthyM5 = Math.min(Math.max(m5, -20), 12);
+  const excessM5 = Math.max(0, m5 - 12);
+  const m5Signal = healthyM5 * m5Weight - excessM5 * (m5Weight * 0.9);
+  // Penalti "sudah lari jauh": h1 sangat tinggi = peluang entry telat (exit liquidity).
+  const extendedPenalty = h1 > 120 ? Math.min(25, (h1 - 120) * 0.12) : 0;
+  const momentum = m5Signal + Math.max(-20, Math.min(40, h1)) * 0.25 - extendedPenalty;
 
   return gradeRank
     + confidence * 0.35
@@ -156,6 +165,15 @@ export function passesStyleGate(signal, style) {
   // Freshness gate: hanya tolak jika umur DIKETAHUI dan melebihi ambang style.
   const ageMin = ageMinutesOf(signal);
   if (ageMin > 0 && ageMin > style.freshnessMaxMinutes * 1.5) return false;
+
+  // Anti "buy pucuk": jangan auto-entry di candle yang sudah vertikal / kelewat jauh.
+  // Sinyal tetap MUNCUL di feed (grading tidak diubah), hanya auto-entry yang ditahan
+  // supaya tidak masuk tepat di puncak lalu kena SL saat harga koreksi/rebound.
+  const m5 = Number(signal.m5 || 0);
+  const h1 = Number(signal.h1 || 0);
+  if (m5 >= 35) return false;              // candle 5m blow-off (parabolik)
+  if (h1 >= 200 && m5 >= 8) return false;  // sudah +200%/jam dan masih spiking → telat
+  if (h1 > 60 && m5 <= -8) return false;   // pump 1 jam sudah berbalik turun → puncak
 
   return true;
 }

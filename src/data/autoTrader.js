@@ -424,9 +424,27 @@ export async function refreshSignals({ autoTrack = true, styleId = null } = {}) 
     // ~50 dan penalti scoreUnknowns -21 → token bersih tidak pernah naik A/A+.
     // Mutasi in-place: objek yang sama dipakai computeSignal di bawah.
     try {
-      const enrichCandidates = [...scanTokens].sort(
+      const byLiquidity = [...scanTokens].sort(
         (a, b) => Number(b.liquidityUsd || 0) - Number(a.liquidityUsd || 0)
       );
+      // Sisipkan beberapa token TERBARU di depan antrian enrichment. New pair sering
+      // likuiditasnya masih tipis sehingga selalu kalah dari sort-by-liquidity dan
+      // tidak pernah di-enrich → grade C → tidak muncul ("new pair kadang gaada").
+      // Total budget tetap (limit 15) — hanya komposisinya yang lebih adil.
+      const ageOf = (t) => {
+        const n = Number(t.ageMinutes ?? t.age);
+        return Number.isFinite(n) ? n : Infinity; // umur tak diketahui = jangan rebut slot
+      };
+      const freshest = [...scanTokens]
+        .filter((t) => Number.isFinite(ageOf(t)))
+        .sort((a, b) => ageOf(a) - ageOf(b))
+        .slice(0, 4);
+      const seen = new Set();
+      const enrichCandidates = [...freshest, ...byLiquidity].filter((t) => {
+        if (!t?.ca || seen.has(t.ca)) return false;
+        seen.add(t.ca);
+        return true;
+      });
       await enrichFeedTokens(enrichCandidates, { limit: 15 });
     } catch {
       // Enrichment opsional — kegagalan = fallback ke perilaku lama (degraded).

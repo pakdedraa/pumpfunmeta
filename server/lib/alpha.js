@@ -12,7 +12,7 @@ function clamp(value, min, max) {
 }
 
 // Score a single mapped pump.fun token (0-100). Pure, no network.
-function scoreToken(t) {
+export function scoreToken(t) {
   let score = 30;
   const progress = Number(t.bondingCurveProgress || 0);
   const ageSec = Number(t.ageSeconds || 0);
@@ -43,7 +43,7 @@ function scoreToken(t) {
 }
 
 // Map alphaScore + intel into a qualitative verdict.
-function riskVerdict(score, intel) {
+export function riskVerdict(score, intel) {
   const top10 = intel?.top10Pct;
   if (top10 != null && top10 >= 70) return 'high-risk';
   if (intel?.commonFunderWallets != null && intel.commonFunderWallets >= 5) return 'high-risk';
@@ -52,7 +52,7 @@ function riskVerdict(score, intel) {
   return 'low-conviction';
 }
 
-function phaseFor(t) {
+export function phaseFor(t) {
   if (t.completed) return 'migrated';
   const progress = Number(t.bondingCurveProgress || 0);
   if (progress >= 60) return 'soon';

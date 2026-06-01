@@ -8,8 +8,9 @@
     "build": "vite build",
     "build:analyze": "ANALYZE=true vite build",
     "preview": "vite preview",
-    "lint": "eslint src --ext js,jsx",
+    "lint": "eslint src server",
     "test": "vitest",
+    "test:run": "vitest run",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -30,6 +31,7 @@
   "devDependencies": {
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "rollup-plugin-visualizer": "^7.0.1",
     "terser": "^5.48.0",
     "vite-plugin-compression": "^0.5.1",

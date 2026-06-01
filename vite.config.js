@@ -27,6 +27,14 @@ export default defineConfig({
 
   base: '/',
 
+  // Vitest — unit tests for the deterministic trading/alpha engines.
+  // Node environment: the tested modules are pure (no DOM at import time).
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.js', 'server/**/*.test.js'],
+    globals: true,
+  },
+
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

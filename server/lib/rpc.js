@@ -4,6 +4,12 @@ import { config } from '../config.js';
 
 const RPC_TIMEOUT_MS = 9000;
 
+// Several upstreams (Jupiter lite-api, etc.) sit behind Cloudflare and RESET the
+// connection for requests carrying Node/undici's default User-Agent ("fetch
+// failed"). Send a browser-ish UA by default so proxied GETs aren't bot-blocked.
+// Callers can still override `user-agent` via options.headers.
+const DEFAULT_UA = 'Mozilla/5.0 (compatible; MemeAgent/1.0)';
+
 // fetch wrapper with an AbortController timeout. Throws on non-2xx.
 export async function fetchJson(url, options = {}, timeoutMs = RPC_TIMEOUT_MS) {
   const controller = new AbortController();
@@ -12,7 +18,7 @@ export async function fetchJson(url, options = {}, timeoutMs = RPC_TIMEOUT_MS) {
     const res = await fetch(url, {
       ...options,
       signal: controller.signal,
-      headers: { accept: 'application/json', ...(options.headers || {}) }
+      headers: { accept: 'application/json', 'user-agent': DEFAULT_UA, ...(options.headers || {}) }
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return await res.json();

@@ -5,7 +5,15 @@
 import { fetchJson } from '../lib/rpc.js';
 import { cached } from '../lib/cache.js';
 
-const PUMP_API = 'https://frontend-api.pump.fun/coins';
+// pump.fun rotates / retires frontend hosts (the legacy `frontend-api.pump.fun`
+// now answers HTTP 530). Try the current v3 host first, then older hosts as
+// fallback — all share the same `/coins?offset&limit&sort&order&includeNsfw`
+// response shape, so mapCoin() works unchanged for whichever one answers.
+const PUMP_HOSTS = [
+  'https://frontend-api-v3.pump.fun',
+  'https://frontend-api-v2.pump.fun',
+  'https://frontend-api.pump.fun'
+];
 const TTL_MS = 5_000;
 
 // Map one raw pump.fun coin to the feed-token field names the frontend expects.
@@ -54,20 +62,23 @@ export async function fetchPumpFunCoins({ limit = 30, sort = 'created_timestamp'
   });
   const key = `pumpfun:${params.toString()}`;
   return cached(key, TTL_MS, async () => {
-    try {
-      const data = await fetchJson(`${PUMP_API}?${params.toString()}`, {
-        headers: {
-          // Some pump.fun edges 403 without a browser-ish UA/origin.
-          'user-agent': 'Mozilla/5.0 (compatible; MemeAgent/1.0)',
-          origin: 'https://pump.fun',
-          referer: 'https://pump.fun/'
-        }
-      });
-      const list = Array.isArray(data) ? data : (Array.isArray(data?.coins) ? data.coins : []);
-      return list.map(mapCoin).filter(Boolean);
-    } catch {
-      return []; // pump.fun blocked / down — caller degrades gracefully
+    const headers = {
+      // Some pump.fun edges 403 without a browser-ish UA/origin.
+      'user-agent': 'Mozilla/5.0 (compatible; MemeAgent/1.0)',
+      origin: 'https://pump.fun',
+      referer: 'https://pump.fun/'
+    };
+    for (const host of PUMP_HOSTS) {
+      try {
+        const data = await fetchJson(`${host}/coins?${params.toString()}`, { headers });
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.coins) ? data.coins : []);
+        const mapped = list.map(mapCoin).filter(Boolean);
+        if (mapped.length) return mapped; // first host that returns tokens wins
+      } catch {
+        // host blocked / down (e.g. 530) — fall through to the next one
+      }
     }
+    return []; // all hosts down — caller degrades gracefully
   });
 }
 

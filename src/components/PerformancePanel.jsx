@@ -1,6 +1,41 @@
-import { Trophy, RotateCcw, History, ChevronLeft, ChevronRight, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { Trophy, RotateCcw, History, ChevronLeft, ChevronRight, X, TrendingUp, TrendingDown, Activity, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { formatUsd } from '../data/autoTrader';
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Fallback: ignore
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copy CA"
+      style={{
+        background: 'transparent',
+        border: '1px solid var(--line)',
+        borderRadius: 4,
+        padding: '2px 6px',
+        cursor: 'pointer',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 11,
+        color: copied ? 'var(--green)' : 'var(--muted)'
+      }}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied' : 'Copy'}
+    </button>
+  );
+}
 
 function StatBox({ label, value, tone, sub }) {
   const cls = tone === 'up' ? 'text-green' : tone === 'down' ? 'text-red' : tone === 'cyan' ? 'text-cyan' : '';
@@ -59,8 +94,13 @@ export default function PerformancePanel({ stats, trades = [], signalHistory = [
   const [selectedSignal, setSelectedSignal] = useState(null);
   const ITEMS_PER_PAGE = 20;
 
-  const totalPages = Math.ceil(signalHistory.length / ITEMS_PER_PAGE);
-  const paginatedHistory = signalHistory.slice(
+  // Deduplicate by CA — keep the newest entry for each token
+  const uniqueHistory = signalHistory.filter((item, index, self) =>
+    index === self.findIndex((t) => t.ca === item.ca)
+  );
+
+  const totalPages = Math.ceil(uniqueHistory.length / ITEMS_PER_PAGE);
+  const paginatedHistory = uniqueHistory.slice(
     historyPage * ITEMS_PER_PAGE,
     (historyPage + 1) * ITEMS_PER_PAGE
   );
@@ -131,13 +171,95 @@ export default function PerformancePanel({ stats, trades = [], signalHistory = [
         </>
       )}
 
+      {/* Posisi Aktif */}
+      {trades.filter(t => t.status === 'ACTIVE').length > 0 && (
+        <div style={{ marginTop: 24, borderTop: '1px solid var(--line)', paddingTop: 24 }}>
+          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 16px', fontSize: 15, color: 'var(--soft)' }}>
+            <Activity size={16} style={{ color: 'var(--green)' }} />
+            Posisi Aktif ({trades.filter(t => t.status === 'ACTIVE').length})
+          </h4>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--muted)' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600 }}>Token</th>
+                  <th style={{ textAlign: 'center', padding: '8px 12px', fontWeight: 600 }}>Grade</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Entry</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Last</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>PnL</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Posisi</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>SL</th>
+                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>TP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trades.filter(t => t.status === 'ACTIVE').map((trade, i) => (
+                  <tr
+                    key={`active-${trade.ca}-${i}`}
+                    style={{
+                      borderBottom: '1px solid var(--line)',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s'
+                    }}
+                    onClick={() => setSelectedSignal(trade.signal)}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <td style={{ padding: '10px 12px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <strong style={{ fontSize: 13 }}>${trade.ticker}</strong>
+                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{trade.name}</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'center', padding: '10px 12px' }}>
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        color: gradeColor(trade.grade),
+                        background: `${gradeColor(trade.grade)}22`,
+                        border: `1px solid ${gradeColor(trade.grade)}44`
+                      }}>
+                        {trade.grade}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--soft)' }}>
+                      {formatUsd(trade.entry)}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--soft)' }}>
+                      {formatUsd(trade.lastPrice)}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px' }}>
+                      <strong style={{ color: (trade.pnlPct || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {(trade.pnlPct || 0) >= 0 ? '+' : ''}{(trade.pnlPct || 0).toFixed(1)}%
+                      </strong>
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
+                      {((trade.positionRemaining || 1) * 100).toFixed(0)}%
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--red)', fontSize: 12 }}>
+                      {formatUsd(trade.sl)}
+                    </td>
+                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)', fontSize: 12 }}>
+                      {formatUsd(trade.tp)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Riwayat Sinyal */}
       {signalHistory.length > 0 && (
         <div style={{ marginTop: 24, borderTop: '1px solid var(--line)', paddingTop: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 15, color: 'var(--soft)' }}>
               <History size={16} style={{ color: 'var(--cyan)' }} />
-              Riwayat Sinyal ({signalHistory.length})
+              Riwayat Sinyal ({uniqueHistory.length})
             </h4>
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -342,6 +464,14 @@ function SignalHistoryModal({ signal, trade, onClose }) {
               </span>
             </h3>
             <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--muted)' }}>{signal.name}</p>
+            {signal.ca && (
+              <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <code style={{ fontSize: 11, color: 'var(--soft)', background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: 4, wordBreak: 'break-all' }}>
+                  {signal.ca}
+                </code>
+                <CopyButton text={signal.ca} />
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -363,6 +493,17 @@ function SignalHistoryModal({ signal, trade, onClose }) {
 
         {/* Content */}
         <div style={{ padding: 24 }}>
+
+          {/* DexScreener Chart Embed */}
+          <div style={{ marginBottom: 20, borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--bg-secondary)' }}>
+            <iframe
+              src={`https://dexscreener.com/solana/${signal.ca}?embed=1&theme=dark&info=0`}
+              title="DexScreener Chart"
+              style={{ width: '100%', height: 380, border: 'none', display: 'block' }}
+              sandbox="allow-scripts allow-same-origin"
+            />
+          </div>
+
           {/* PnL Summary */}
           {pnl != null && (
             <div style={{

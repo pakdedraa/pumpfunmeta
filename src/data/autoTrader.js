@@ -1,7 +1,7 @@
 import { analyzeToken } from './apeEngine';
 import { analyzeRug } from './rugDetector';
 import { analyzeRunner } from './runnerDetector';
-import { pushSnapshot, getPeak } from './snapshotStore';
+import { pushSnapshot, getPeak, getLatest } from './snapshotStore';
 import { buildSignalExplain } from './signalNarrative';
 import { fetchDiscoveryFeed, fetchTokenMarketSnapshots, fetchTokenSnapshot } from './liveProviders';
 import { fetchHermesSol } from './providers';
@@ -23,7 +23,9 @@ const TRACKED_GRADES = new Set(['A+', 'A', 'B']);
 /* Grade B = High Risk: hanya "best of the best" yang diloloskan, dibatasi jumlahnya. */
 const MAX_B_SIGNALS = 2;
 /* Jeda sebelum token yang sama boleh di-entry ulang setelah ditutup. */
-const REENTRY_COOLDOWN_MS = 5 * 60 * 1000;
+const REENTRY_COOLDOWN_MS = 15 * 60 * 1000; // 15 menit default cooldown
+const REENTRY_LOSER_MULT = 2; // cooldown 2x lebih lama kalau trade sebelumnya LOSS
+const MAX_REENTRY_PER_TOKEN = 3; // maksimal re-entry 3x per token per sesi
 
 function loadTrades() {
   try {
@@ -506,8 +508,26 @@ export function applyPriceUpdates(signals, trades, liveTokens) {
       return { ...t, signal: snapshot };
     }
 
+    // Pre-check SL real-time pakai snapshot store (lebih fresh dari DexScreener cache).
+    const snapLatest = getLatest(t.ca);
+    const snapPrice = snapLatest?.priceUsd > 0 ? snapLatest.priceUsd : 0;
+    const worstPrice = snapPrice > 0 ? Math.min(currentPrice, snapPrice) : currentPrice;
+
     // Update peak price untuk trailing stop
     const peakPrice = Math.max(t.peakPrice || t.entry, currentPrice);
+
+    // Force SL hit kalau worstPrice sudah di bawah SL (real-time protection).
+    if (worstPrice <= t.sl) {
+      tradesChanged = true;
+      const slTrade = applyExitActions(t, [{ type: 'FULL_EXIT', price: worstPrice, size: t.positionRemaining || 1, reason: 'SL hit (real-time)' }], worstPrice);
+      slTrade.status = 'LOSS';
+      slTrade.sl = t.sl;
+      slTrade.lastPrice = worstPrice;
+      slTrade.peakPrice = peakPrice;
+      slTrade.signal = snapshot;
+      slTrade.exitReason = 'Stop loss tercapai (real-time)';
+      return slTrade;
+    }
 
     // Compute exit actions dari exit engine
     const { actions, newStop, newStatus, reason, tiers } = computeExitActions(t, currentPrice, live, snapshot);
@@ -569,12 +589,18 @@ export function openBacktestTrade(signal, style = null) {
     if (activeCount >= style.maxPositions) return null;
   }
 
-  // Cooldown re-entry: ambil penutupan PALING BARU untuk CA ini (bukan find pertama).
-  const cooldown = style?.rotationCooldownMs ?? REENTRY_COOLDOWN_MS;
-  const lastClosedAt = trades
-    .filter((t) => t.ca === signal.ca && t.closedAt)
-    .reduce((max, t) => Math.max(max, t.closedAt), 0);
-  if (lastClosedAt && Date.now() - lastClosedAt < cooldown) return null;
+  // Cooldown re-entry: ambil penutupan PALING BARU untuk CA ini.
+  const closedForCa = trades.filter((t) => t.ca === signal.ca && t.closedAt);
+  const lastClosed = closedForCa.reduce((max, t) => (t.closedAt > max.closedAt ? t : max), closedForCa[0] || null);
+
+  // Smart cooldown: lebih lama kalau trade sebelumnya LOSS (hindari revenge trading).
+  let cooldown = style?.rotationCooldownMs ?? REENTRY_COOLDOWN_MS;
+  if (lastClosed?.status === 'LOSS') cooldown *= REENTRY_LOSER_MULT;
+  if (lastClosed && Date.now() - lastClosed.closedAt < cooldown) return null;
+
+  // Max reentry per token per sesi — hindari chasing tanpa batas.
+  const reentryCount = closedForCa.length;
+  if (reentryCount >= MAX_REENTRY_PER_TOKEN) return null;
 
   const now = Date.now();
   const trade = {

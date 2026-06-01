@@ -11,7 +11,7 @@
  * Target: capture 5x, 10x, 50x runner tanpa ke-stop prematur.
  */
 
-import { getVelocity } from './snapshotStore';
+import { getVelocity, getLatest } from './snapshotStore';
 
 /**
  * Hitung tier TP adaptif berdasarkan grade dan narrative.

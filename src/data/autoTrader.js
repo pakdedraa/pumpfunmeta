@@ -97,7 +97,7 @@ export function shortAddr(a) {
 
 /* ─── Signal Grading ─────────────────────────────────────────────────────── */
 /* CATATAN: logika analisa/skoring di bawah TIDAK diubah dari versi sebelumnya. */
-function gradeSignal(token, report, rug, runner, narrative = null) {
+export function gradeSignal(token, report, rug, runner, narrative = null) {
   const price = Number(token.priceUsd || 0);
   const liquidity = Number(token.liquidityUsd || 0);
   const flags = token.flags || {};
@@ -193,7 +193,7 @@ function round1(v) { return Math.round(v * 10) / 10; }
  * likuiditas tipis dapat SL lebih lebar (hindari ke-stop noise); momentum &
  * runner kuat menaikkan target TP (biarkan pemenang lari).
  */
-function deriveSlTp({ grade, confidence, token, runner }) {
+export function deriveSlTp({ grade, confidence, token, runner }) {
   const flags = token.flags || {};
   const m5 = Math.abs(Number(token.priceChange?.m5 ?? token.m5 ?? 0));
   const h1 = Number(token.priceChange?.h1 ?? token.h1 ?? 0);
@@ -258,7 +258,6 @@ function buildSignal(token, report, rug, runner, narrative = null, alpha = null)
     ca: token.ca,
     ticker: token.ticker || shortAddr(token.ca),
     name: token.name || 'Unknown',
-    phase: token.phase || 'new',
     grade,
     side,
     confidence,
@@ -359,7 +358,7 @@ const gradeRank = { 'A+': 4, A: 3, B: 2, C: 1 };
  * Menggabungkan skor engine, keyakinan, runner, integritas volume, momentum,
  * dikurangi penalti risiko rug. Makin tinggi = makin layak dipertahankan.
  */
-function signalEdge(s) {
+export function signalEdge(s) {
   const ex = s.explain || {};
   const runner = Number(ex.runnerSummary?.score || 0);
   const vol = Number(ex.volumeIntegrity || 0);
@@ -380,7 +379,7 @@ function signalEdge(s) {
  * Hanya B dengan struktur bersih, momentum tidak negatif, likuiditas memadai,
  * volume kredibel, dan risiko rug rendah yang boleh muncul.
  */
-function isQualityB(s) {
+export function isQualityB(s) {
   const ex = s.explain || {};
   const riskLevel = ex.riskNarrative?.level || 'low';
   const runner = Number(ex.runnerSummary?.score || 0);

@@ -59,7 +59,7 @@
     }
   ],
   "env": {
-    "VITE_SOLANA_RPC": "@vite_solana_rpc",
+    "VITE_SOLANA_RPC": "https://api.mainnet-beta.solana.com",
     "VITE_HELIUS_API_KEY": "@vite_helius_api_key",
     "VITE_DEV_MODE": "@vite_dev_mode",
     "VITE_GA_TRACKING_ID": "@vite_ga_tracking_id",

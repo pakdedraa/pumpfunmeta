@@ -60,9 +60,9 @@
   ],
   "env": {
     "VITE_SOLANA_RPC": "https://api.mainnet-beta.solana.com",
-    "VITE_HELIUS_API_KEY": "@vite_helius_api_key",
-    "VITE_DEV_MODE": "@vite_dev_mode",
-    "VITE_GA_TRACKING_ID": "@vite_ga_tracking_id",
-    "VITE_SENTRY_DSN": "@vite_sentry_dsn"
+    "VITE_HELIUS_API_KEY": "a6ffd677-4b3c-4168-8590-4446e256af63",
+    "VITE_DEV_MODE": "false",
+    "VITE_GA_TRACKING_ID": "",
+    "VITE_SENTRY_DSN": ""
   }
 }

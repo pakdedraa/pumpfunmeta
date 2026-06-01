@@ -88,6 +88,16 @@ export default function SignalDetail({ signal, trade, onClose }) {
           <button type="button" className="sd-close" onClick={onClose} aria-label="Tutup"><X size={18} /></button>
         </header>
 
+        {/* DexScreener Chart Embed */}
+        <div style={{ borderRadius: 10, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--bg-secondary)', marginBottom: 16 }}>
+          <iframe
+            src={`https://dexscreener.com/solana/${signal.ca}?embed=1&theme=dark&info=0`}
+            title="DexScreener Chart"
+            style={{ width: '100%', height: 340, border: 'none', display: 'block' }}
+            sandbox="allow-scripts allow-same-origin"
+          />
+        </div>
+
         {/* Verdict banner */}
         <div className="sd-verdict" style={{ borderColor: `${verdictColor}55`, background: `${verdictColor}12` }}>
           <div>

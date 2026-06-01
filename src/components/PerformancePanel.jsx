@@ -94,8 +94,14 @@ export default function PerformancePanel({ stats, trades = [], signalHistory = [
   const [selectedSignal, setSelectedSignal] = useState(null);
   const ITEMS_PER_PAGE = 20;
 
+  // Hanya tampilkan signal yang sudah punya trade selesai (WIN/LOSS)
+  const closedHistory = signalHistory.filter((item) => {
+    const matched = trades.find((t) => t.ca === item.ca);
+    return matched && (matched.status === 'WIN' || matched.status === 'LOSS');
+  });
+
   // Deduplicate by CA — keep the newest entry for each token
-  const uniqueHistory = signalHistory.filter((item, index, self) =>
+  const uniqueHistory = closedHistory.filter((item, index, self) =>
     index === self.findIndex((t) => t.ca === item.ca)
   );
 
@@ -171,95 +177,13 @@ export default function PerformancePanel({ stats, trades = [], signalHistory = [
         </>
       )}
 
-      {/* Posisi Aktif */}
-      {trades.filter(t => t.status === 'ACTIVE').length > 0 && (
-        <div style={{ marginTop: 24, borderTop: '1px solid var(--line)', paddingTop: 24 }}>
-          <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 16px', fontSize: 15, color: 'var(--soft)' }}>
-            <Activity size={16} style={{ color: 'var(--green)' }} />
-            Posisi Aktif ({trades.filter(t => t.status === 'ACTIVE').length})
-          </h4>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--line)', color: 'var(--muted)' }}>
-                  <th style={{ textAlign: 'left', padding: '8px 12px', fontWeight: 600 }}>Token</th>
-                  <th style={{ textAlign: 'center', padding: '8px 12px', fontWeight: 600 }}>Grade</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Entry</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Last</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>PnL</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>Posisi</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>SL</th>
-                  <th style={{ textAlign: 'right', padding: '8px 12px', fontWeight: 600 }}>TP</th>
-                </tr>
-              </thead>
-              <tbody>
-                {trades.filter(t => t.status === 'ACTIVE').map((trade, i) => (
-                  <tr
-                    key={`active-${trade.ca}-${i}`}
-                    style={{
-                      borderBottom: '1px solid var(--line)',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s'
-                    }}
-                    onClick={() => setSelectedSignal(trade.signal)}
-                    onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-secondary)'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <td style={{ padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                        <strong style={{ fontSize: 13 }}>${trade.ticker}</strong>
-                        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{trade.name}</span>
-                      </div>
-                    </td>
-                    <td style={{ textAlign: 'center', padding: '10px 12px' }}>
-                      <span style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: gradeColor(trade.grade),
-                        background: `${gradeColor(trade.grade)}22`,
-                        border: `1px solid ${gradeColor(trade.grade)}44`
-                      }}>
-                        {trade.grade}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--soft)' }}>
-                      {formatUsd(trade.entry)}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--soft)' }}>
-                      {formatUsd(trade.lastPrice)}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px' }}>
-                      <strong style={{ color: (trade.pnlPct || 0) >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {(trade.pnlPct || 0) >= 0 ? '+' : ''}{(trade.pnlPct || 0).toFixed(1)}%
-                      </strong>
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
-                      {((trade.positionRemaining || 1) * 100).toFixed(0)}%
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--red)', fontSize: 12 }}>
-                      {formatUsd(trade.sl)}
-                    </td>
-                    <td style={{ textAlign: 'right', padding: '10px 12px', color: 'var(--green)', fontSize: 12 }}>
-                      {formatUsd(trade.tp)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Riwayat Sinyal */}
-      {signalHistory.length > 0 && (
+      {/* Riwayat Trade Selesai (closed trades only) */}
+      {uniqueHistory.length > 0 && (
         <div style={{ marginTop: 24, borderTop: '1px solid var(--line)', paddingTop: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <h4 style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, fontSize: 15, color: 'var(--soft)' }}>
               <History size={16} style={{ color: 'var(--cyan)' }} />
-              Riwayat Sinyal ({uniqueHistory.length})
+              Riwayat Trade Selesai ({uniqueHistory.length})
             </h4>
             {totalPages > 1 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

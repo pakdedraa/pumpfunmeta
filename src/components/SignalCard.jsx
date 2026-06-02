@@ -49,9 +49,11 @@ export default function SignalCard({ signal, trade, onClick }) {
     : ((trade?.slPct ?? signal.slPct) != null ? -Math.abs(trade?.slPct ?? signal.slPct) : null);
   const tpDistPct = entry && tp ? ((tp - entry) / entry) * 100
     : ((trade?.tpPct ?? signal.tpPct) != null ? Math.abs(trade?.tpPct ?? signal.tpPct) : null);
-  const livePnl = trade
-    ? trade.pnlPct
-    : (entry && signal.priceUsd ? ((signal.priceUsd - entry) / entry) * 100 : null);
+  // PnL HANYA untuk posisi nyata. Peluang (belum entry) tidak punya PnL — sebelumnya
+  // dihitung dari harga scan vs harga live yang terus bergeser sehingga tampak seperti
+  // "PnL" padahal belum masuk posisi (sumber "PnL kadang ga sesuai").
+  const livePnl = trade ? trade.pnlPct : null;
+  const m5 = Number(signal.m5 || 0);
 
   // Untuk posisi aktif, tampilkan grade original saat entry (bukan re-evaluasi live)
   // supaya Beranda dan Sinyal & Posisi selalu sinkron.
@@ -135,14 +137,26 @@ export default function SignalCard({ signal, trade, onClick }) {
       </div>
 
       <div className="sc-pnl">
-        <span className="sc-pnl-label">PnL Berjalan</span>
-        <strong className={livePnl == null ? 'text-muted' : livePnl >= 0 ? 'text-green' : 'text-red'}>
-          {livePnl == null ? '—' : `${livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}%`}
-        </strong>
-        {trade && trade.positionRemaining != null && trade.positionRemaining < 1.0 && (
-          <small style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
-            Posisi: {(trade.positionRemaining * 100).toFixed(0)}%
-          </small>
+        {trade ? (
+          <>
+            <span className="sc-pnl-label">PnL Berjalan</span>
+            <strong className={livePnl == null ? 'text-muted' : livePnl >= 0 ? 'text-green' : 'text-red'}>
+              {livePnl == null ? '—' : `${livePnl >= 0 ? '+' : ''}${livePnl.toFixed(2)}%`}
+            </strong>
+            {trade.positionRemaining != null && trade.positionRemaining < 1.0 && (
+              <small style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                Posisi: {(trade.positionRemaining * 100).toFixed(0)}%
+              </small>
+            )}
+          </>
+        ) : (
+          <>
+            <span className="sc-pnl-label">Momentum 5m</span>
+            <strong className={m5 >= 0 ? 'text-green' : 'text-red'}>
+              {`${m5 >= 0 ? '+' : ''}${m5.toFixed(1)}%`}
+            </strong>
+            <small style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>Peluang — belum entry</small>
+          </>
         )}
       </div>
 

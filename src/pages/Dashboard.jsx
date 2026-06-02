@@ -14,6 +14,7 @@ import {
   getBacktestStats,
   resetBacktest,
   getSignalHistory,
+  fillOpenSlots,
 } from '../data/autoTrader';
 import SignalCard from '../components/SignalCard.jsx';
 import SignalDetail from '../components/SignalDetail.jsx';
@@ -21,7 +22,7 @@ import PasteScanPanel from '../components/PasteScanPanel.jsx';
 import PerformancePanel from '../components/PerformancePanel.jsx';
 import TradeConfirmationModal from '../components/TradeConfirmationModal.jsx';
 import TradingStyleSelector from '../components/TradingStyleSelector.jsx';
-import { getStyle, loadStyleId, saveStyleId, TRADING_STYLES } from '../data/tradingStyle';
+import { getStyle, loadStyleId, saveStyleId, TRADING_STYLES, passesStyleGate } from '../data/tradingStyle';
 
 const TABS = [
   { key: 'home', label: 'Beranda', icon: Bot },
@@ -157,7 +158,10 @@ export default function Dashboard({ onLogout }) {
         if (liveTokens.length) {
           const { signals: nextSignals, trades: nextTrades } = applyPriceUpdates(currentSignals, currentTrades, liveTokens);
           setSignals(nextSignals);
-          setTrades(nextTrades);
+          // Begitu harga di-refresh & posisi yang kena TP/SL ditutup, langsung isi slot
+          // kosong dari peluang terbaik (tanpa menunggu scan 20s berikutnya).
+          const finalTrades = agentOnRef.current ? fillOpenSlots(styleIdRef.current) : nextTrades;
+          setTrades(finalTrades);
           setLastPriceUpdate(Date.now());
         }
       } catch { /* abaikan */ }
@@ -465,9 +469,11 @@ function HomeTab({
   const slotsUsed = activePositions.length;
   const slotsTotal = style.maxPositions;
 
-  // Sinyal terpanas yang belum jadi posisi (peluang masuk berikutnya)
+  // Antrian masuk: sinyal yang BENAR-BENAR lolos gate gaya (kandidat entry nyata),
+  // belum jadi posisi. Begitu ada slot kosong, agent otomatis mengentry ini — jadi
+  // daftar ini = "berikutnya masuk", bukan sekadar grade A+/A yang nyangkut.
   const hotSignals = signals
-    .filter((s) => !tradesMap.has(s.ca) && (s.grade === 'A+' || s.grade === 'A'))
+    .filter((s) => !tradesMap.has(s.ca) && passesStyleGate(s, style))
     .slice(0, 4);
 
   const greeting = user?.publicKey
@@ -587,15 +593,15 @@ function HomeTab({
       <div className="panel">
         <div className="panel-header">
           <div>
-            <h3>Peluang Terpanas</h3>
-            <p className="panel-subtitle">Sinyal grade A+/A terkuat yang belum jadi posisi.</p>
+            <h3>Antrian Masuk Berikutnya</h3>
+            <p className="panel-subtitle">Kandidat yang lolos gaya kamu — otomatis dientry begitu ada slot kosong.</p>
           </div>
           <button type="button" className="cmd-link" onClick={onGoToSignals}>
             Lihat semua <ArrowRight size={14} />
           </button>
         </div>
         {hotSignals.length === 0 ? (
-          <div className="cmd-empty"><p>Belum ada peluang baru. Tekan "Scan Sekarang" untuk memindai ulang.</p></div>
+          <div className="cmd-empty"><p>{slotsUsed >= slotsTotal ? 'Semua slot terisi — antrian masuk menunggu posisi close.' : 'Belum ada kandidat yang lolos gaya kamu. Tekan "Scan Sekarang" atau ganti gaya trading.'}</p></div>
         ) : (
           <div className="cmd-hot-list">
             {hotSignals.map((s) => <HotSignalRow key={s.ca} signal={s} onClick={() => onSelectSignal(s)} />)}

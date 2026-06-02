@@ -57,9 +57,8 @@ export default function SignalDetail({ signal, trade, onClose }) {
   const slDistPct = entry && sl ? ((sl - entry) / entry) * 100 : (slPct != null ? -Math.abs(slPct) : null);
   const tpDistPct = entry && tp ? ((tp - entry) / entry) * 100 : (tpPct != null ? Math.abs(tpPct) : null);
   const fmtSigned = (v) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-  const livePnl = trade
-    ? trade.pnlPct
-    : (entry && signal.priceUsd ? ((signal.priceUsd - entry) / entry) * 100 : null);
+  // PnL hanya untuk posisi nyata; peluang (belum entry) tidak menampilkan PnL.
+  const livePnl = trade ? trade.pnlPct : null;
 
   const chartUrl = signal.url || `https://dexscreener.com/solana/${signal.ca}`;
   // Chart embed mengikuti sumber yang sama dengan tombol "Chart": kalau signal.url

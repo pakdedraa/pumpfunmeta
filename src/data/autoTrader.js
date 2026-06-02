@@ -661,6 +661,42 @@ export function openBacktestTrade(signal, style = null) {
   return trade;
 }
 
+/**
+ * Isi slot posisi yang kosong SEKARANG dari sinyal cache terbaru, tanpa menunggu
+ * siklus scan 20s. Dipanggil tiap price-poll (6s) sehingga begitu satu posisi close
+ * atau muncul peluang terbaik, slot langsung terisi ("jangan nunggu").
+ *
+ * Entry di-rebase ke harga LIVE saat entry supaya posisi baru mulai dari ~0% —
+ * bukan mewarisi selisih dari harga scan yang sudah basi (sumber PnL tampak aneh).
+ * Semua guard (cooldown, maxPositions, dedupe per-CA) tetap lewat openBacktestTrade.
+ */
+export function fillOpenSlots(styleId = null) {
+  const signals = loadSignals();
+  const trades = loadTrades();
+  if (!signals.length) return trades;
+
+  const style = getStyle(styleId || loadStyleId());
+  const activeTrades = trades.filter((t) => t.status === 'ACTIVE');
+  if (Number.isFinite(style.maxPositions) && activeTrades.length >= style.maxPositions) {
+    return trades; // slot penuh — tidak ada yang perlu diisi
+  }
+
+  const recentlyClosed = trades.filter((t) => t.status === 'WIN' || t.status === 'LOSS');
+  const picks = selectSignalsForStyle(signals, activeTrades, style, recentlyClosed);
+  if (!picks.length) return trades;
+
+  picks.forEach((sig) => {
+    const price = Number(sig.priceUsd || sig.entry || 0);
+    const slPct = Number(sig.slPct || 0);
+    const tpPct = Number(sig.tpPct || 0);
+    const rebased = price > 0
+      ? { ...sig, entry: price, sl: price * (1 - slPct / 100), tp: price * (1 + tpPct / 100) }
+      : sig;
+    openBacktestTrade(rebased, style);
+  });
+  return loadTrades();
+}
+
 /** Statistik backtest dari trade yang sudah selesai (WIN/LOSS). */
 export function getBacktestStats() {
   const trades = loadTrades();

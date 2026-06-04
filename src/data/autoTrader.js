@@ -96,7 +96,13 @@ export function shortAddr(a) {
 }
 
 /* ─── Signal Grading ─────────────────────────────────────────────────────── */
-/* CATATAN: logika analisa/skoring di bawah TIDAK diubah dari versi sebelumnya. */
+/* ⚠️ PROFESSIONAL MEMECOIN TRADER CALIBRATION v2:
+ * - Entry threshold diperketat: buy pressure, volume minimum, no fresh dump
+ * - Confidence lebih realistis (tidak auto-bonus, berdasar data completeness)
+ * - Narrative bonus capped agar tidak over-trigger A+ di tema saturated
+ * - Micro-cap filter untuk hindari low-liquidity traps
+ * - Time-based risk: token terlalu baru (<2 menit) atau terlalu tua di-downgrade
+ */
 export function gradeSignal(token, report, rug, runner, narrative = null) {
   const price = Number(token.priceUsd || 0);
   const liquidity = Number(token.liquidityUsd || 0);
@@ -111,34 +117,52 @@ export function gradeSignal(token, report, rug, runner, narrative = null) {
   const volume5m = Number(flags.reportedVolume || 0);
   const volLiqRatio = Number(flags.volumeLiquidityRatio || 0);
   const isBonding = token.phase === 'new' || String(token.lpStatus || '').toLowerCase().includes('bonding');
+  const ageMin = token.ageMinutes ?? (token.age ? Number(token.age) : null);
+
+  // ── Derived safety signals ──
+  // Deteksi fresh dump: M5 turun signifikan tapi sebelumnya ada pump (h1 positif)
+  const freshDump = m5 <= -8 && h1 > 5;
+  // Deteksi dead cat bounce: M5 naik dikit tapi H1 masih turun tajam
+  const deadCatBounce = m5 > 0 && m5 < 5 && h1 < -20;
+  // Micro-cap trap: liquidity terlalu kecil untuk non-bonding
+  const microCap = !isBonding && liquidity > 0 && liquidity < 8000;
 
   const checks = {
-    scoreHigh: report.score >= 75,
-    scoreOk: report.score >= 60,
-    scoreMin: report.score >= 45,
+    scoreHigh: report.score >= 73,           // ↓ dari 75 → sedikit lebih inklusif
+    scoreOk: report.score >= 58,             // ↓ dari 60 → tangkap setup decent
+    scoreMin: report.score >= 43,            // ↓ dari 45
     noRug: !rug.isRugged && rug.level !== 'critical' && rug.level !== 'high',
     notDead: !rug.isDead,
-    runnerScoreHigh: runner.runnerScore >= 50,
-    runnerScoreOk: runner.runnerScore >= 30,
-    confidence: report.confidence >= 50,
-    confidenceMin: report.confidence >= 40,
-    liquidityOk: isBonding ? true : liquidity >= 12000,
-    bondingActive: isBonding ? txns5m >= 8 : true,
-    momentum: m5 >= -5 && h1 >= -12,
-    buyPressure: buyRatio >= 0.52 && buys5m >= 3,
-    volumeSehat: volLiqRatio < 6 && volume5m > 0,
+    runnerScoreHigh: runner.runnerScore >= 52, // ↑ dari 50 → butuh momentum lebih kuat
+    runnerScoreOk: runner.runnerScore >= 32,   // ↑ dari 30
+    confidence: report.confidence >= 48,       // ↓ dari 50 → threshold realita data feed
+    confidenceMin: report.confidence >= 38,    // ↓ dari 40
+    liquidityOk: isBonding ? true : liquidity >= 15000,  // ↑ dari 12000 → filter micro-cap
+    bondingActive: isBonding ? txns5m >= 10 : true,      // ↑ dari 8 → bonding harus aktif
+    momentum: m5 >= -4 && h1 >= -10,           // lebih ketat dari -5/-12
+    buyPressure: buyRatio >= 0.55 && buys5m >= 5,  // ↑ dari 0.52 & 3 → ada real demand
+    volumeSehat: volLiqRatio < 5.5 && volume5m >= 400 && txns5m >= 12,  // ↑ dari <6 & >0
     noFreeze: flags.freezeActive !== true,
     noOpenMint: flags.mintRevoked !== false,
-    concentrationOk: flags.top10Pct == null || flags.top10Pct < 58,
+    concentrationOk: flags.top10Pct == null || flags.top10Pct < 55,  // ↓ dari 58 → lebih ketat
     noBlacklist: flags.madeOnSolBlacklisted !== true,
+    // ── Filter baru ──
+    noFreshDump: !freshDump,                  // jangan entry pas lagi dump
+    noDeadCatBounce: !deadCatBounce,          // jangan tertipu dead cat
+    noMicroCap: !microCap,                    // hindari liquidity trap
+    notTooFresh: ageMin == null || ageMin >= 2 || isBonding,  // minimal 2 menit (kecuali bonding)
+    volumeCredible: volume5m >= 250 || (isBonding && txns5m >= 8),  // minimal ada aktivitas
   };
 
-  // Narrative modifier: adjust score threshold berdasarkan narrative
-  const narrativeBonus = narrative ? narrative.narrativeScore : 0;
-  const adjustedScoreHigh = checks.scoreHigh || (report.score + narrativeBonus >= 75);
-  const adjustedScoreOk = checks.scoreOk || (report.score + narrativeBonus >= 60);
+  // Narrative modifier: capped + hanya untuk tema valid dengan aktivitas on-chain
+  const narrativeBonus = narrative
+    ? clamp(narrative.narrativeScore, -8, 12)  // cap bonus/penalti → tidak over-trigger
+    : 0;
+  const adjustedScoreHigh = checks.scoreHigh || (report.score + narrativeBonus >= 74);
+  const adjustedScoreOk = checks.scoreOk || (report.score + narrativeBonus >= 58);
 
   const passed = Object.values(checks).filter(Boolean).length;
+  const totalChecks = Object.keys(checks).length;
 
   let grade = 'C';
   let side = 'SELL';
@@ -150,34 +174,67 @@ export function gradeSignal(token, report, rug, runner, narrative = null) {
     side = 'SELL';
     confidence = 96;
     reasons.push('Token terdeteksi bermasalah kritis — hindari entry');
-  } else if (adjustedScoreHigh && checks.noRug && checks.notDead && checks.runnerScoreHigh && checks.confidence && checks.liquidityOk && checks.momentum && checks.buyPressure && checks.volumeSehat && checks.noFreeze && checks.noOpenMint && checks.concentrationOk) {
-    grade = 'A+';
-    side = 'BUY';
-    confidence = Math.min(98, Math.round(report.score + narrativeBonus + 12));
-    reasons.push('Setup kuat: momentum, struktur, dan risiko paling seimbang');
-    if (narrative && narrative.isHotMeta) reasons.push('Tema sedang panas');
-  } else if (adjustedScoreOk && checks.noRug && checks.notDead && checks.runnerScoreOk && checks.confidence && checks.liquidityOk && checks.momentum && checks.buyPressure && checks.noFreeze && checks.noOpenMint) {
-    grade = 'A';
-    side = 'BUY';
-    confidence = Math.min(92, Math.round(report.score + narrativeBonus + 6));
-    reasons.push('Setup bagus: risiko masih terukur dan layak dipantau');
-  } else if (checks.scoreMin && checks.noRug && checks.notDead && checks.confidenceMin && checks.liquidityOk) {
+  } else if (checks.noBlacklist && rug.level === 'high') {
+    // Rug level high → downgrade ke B maksimal
     grade = 'B';
     side = 'HOLD';
-    confidence = Math.round((report.score + narrativeBonus) * 0.9);
+    confidence = Math.round(Math.min(58, report.confidence * 0.7));
+    reasons.push('Risiko tinggi terdeteksi — hanya untuk pantauan');
+  } else if (adjustedScoreHigh && checks.noRug && checks.notDead && checks.runnerScoreHigh
+    && checks.confidence && checks.liquidityOk && checks.momentum && checks.buyPressure
+    && checks.volumeSehat && checks.noFreeze && checks.noOpenMint && checks.concentrationOk
+    && checks.noFreshDump && checks.noDeadCatBounce && checks.noMicroCap
+    && checks.volumeCredible) {
+    // A+ butuh SEMUA check hijau termasuk filter baru
+    grade = 'A+';
+    side = 'BUY';
+    // Confidence realistis: base = report confidence, bonus terukur, bukan auto +12
+    confidence = Math.min(94, Math.round(
+      report.confidence * 0.75 + narrativeBonus * 0.6 + runner.runnerScore * 0.12
+    ));
+    reasons.push('Setup kuat: momentum, struktur, dan risiko paling seimbang');
+    if (narrative && narrative.isHotMeta && !narrative.isSaturated) reasons.push('Tema sedang panas — attention tinggi');
+    if (runner.runnerScore >= 70) reasons.push('Runner score superior — momentum sangat kuat');
+  } else if (adjustedScoreOk && checks.noRug && checks.notDead && checks.runnerScoreOk
+    && checks.confidence && checks.liquidityOk && checks.momentum && checks.buyPressure
+    && checks.noFreeze && checks.noOpenMint && checks.noFreshDump
+    && checks.volumeCredible) {
+    // A: tidak perlu semua check hijau, tapi core safety + momentum harus OK
+    grade = 'A';
+    side = 'BUY';
+    confidence = Math.min(88, Math.round(
+      report.confidence * 0.65 + narrativeBonus * 0.5 + runner.runnerScore * 0.1
+    ));
+    reasons.push('Setup bagus: risiko masih terukur dan layak dipantau');
+    if (checks.liquidityOk && liquidity >= 40000) reasons.push('Likuiditas sehat untuk size masuk');
+  } else if (checks.scoreMin && checks.noRug && checks.notDead && checks.confidenceMin
+    && checks.liquidityOk && checks.noFreshDump) {
+    // B: entry pantauan — strukturnya cukup bersih tapi momentum belum konfirmasi penuh
+    grade = 'B';
+    side = 'HOLD';
+    confidence = Math.min(70, Math.round((report.score + narrativeBonus) * 0.85));
     reasons.push('Kondisi menarik tapi belum memenuhi standar entry prioritas');
+    if (!checks.momentum) reasons.push('Momentum belum konfirmasi — tunggu pullback sehat');
   } else {
     grade = 'C';
     side = 'SELL';
-    confidence = Math.round(Math.max(40, 80 - passed * 2));
+    confidence = Math.round(Math.max(35, 80 - (passed / totalChecks) * 45));
     reasons.push('Kondisi tidak memenuhi kriteria seleksi — hindari entry');
+    if (freshDump) reasons.push('Sedang dump — jangan tangkap falling knife');
+    if (microCap) reasons.push('Likuiditas terlalu tipis — risiko tinggi');
+    if (deadCatBounce) reasons.push('Dead cat bounce — jangan tertipu pantulan');
   }
 
   // Downgrade jika narrative sangat negatif (late copycat di tema saturated)
-  if (narrative && narrative.isSaturated && !narrative.isFirstMover && narrativeBonus < -8) {
-    if (grade === 'A+') grade = 'A';
-    else if (grade === 'A') grade = 'B';
-    reasons.push('Late copycat di tema saturated — risiko exit liquidity tinggi');
+  if (narrative && narrative.isSaturated && !narrative.isFirstMover && narrativeBonus <= -4) {
+    if (grade === 'A+') { grade = 'A'; reasons.push('Late copycat di tema saturated — downgrade ke A'); }
+    else if (grade === 'A') { grade = 'B'; reasons.push('Late copycat di tema saturated — downgrade ke B'); }
+  }
+
+  // Hard safety: kalau buy pressure drop signifikan saat scan → downgrade
+  if (buyRatio < 0.45 && totalTx >= 10 && grade === 'A+') {
+    grade = 'A';
+    reasons.push('Buy pressure melemah signifikan — downgrade');
   }
 
   return { grade, side, confidence, reasons, checks, passed };
@@ -187,11 +244,20 @@ function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 function round1(v) { return Math.round(v * 10) / 10; }
 
 /**
- * SL/TP RELATIF — dihitung dari profil tiap token, bukan persentase konstan.
- * Faktor: volatilitas (pergerakan harga + rasio vol/likuiditas), kedalaman
- * likuiditas, momentum H1, runner score, grade, dan keyakinan. Token volatil /
- * likuiditas tipis dapat SL lebih lebar (hindari ke-stop noise); momentum &
- * runner kuat menaikkan target TP (biarkan pemenang lari).
+ * SL/TP RELATIF v2 — PROFESSIONAL MEMECOIN CALIBRATION
+ *
+ * Prinsip utama:
+ * 1. SL HARUS lebih lebar dari noise natural memecoin (wick 15-20% normal)
+ * 2. TP HARUS realistis — mayoritas memecoin cuma naik 20-50% sebelum reversal
+ * 3. RR HARUS grounded di realita — 2.0-3.0 cukup, jangan mimpi 4.0+
+ * 4. Volatilitas dihitung multi-timeframe (M5, H1, vol/LP) dengan bobot seimbang
+ * 5. Likuiditas tipis → SL lebih lebar (hindari stop hunt oleh whale)
+ * 6. Momentum kuat → TP dinaikkan moderat (biarkan winner run, tapi tetap realistis)
+ *
+ * Target calibration:
+ * - A+ : SL 10-14%, TP 25-60%, RR 2.0-3.0
+ * - A  : SL 12-18%, TP 20-50%, RR 1.6-2.5
+ * - B  : SL 15-22%, TP 18-40%, RR 1.2-1.8
  */
 export function deriveSlTp({ grade, confidence, token, runner }) {
   const flags = token.flags || {};
@@ -200,28 +266,63 @@ export function deriveSlTp({ grade, confidence, token, runner }) {
   const liq = Number(token.liquidityUsd || 0);
   const runnerScore = Number(runner?.runnerScore || 0);
   const volLiqRatio = Number(flags.volumeLiquidityRatio || 0);
+  const txns5m = Number(flags.txns5m || 0);
 
-  // Proxy volatilitas (0..40)
-  const volatility = clamp(m5 * 0.8 + Math.abs(h1) * 0.25 + volLiqRatio * 1.5, 0, 40);
+  // ── Proxy volatilitas multi-timeframe (0..45) ──
+  // M5 memberi sinyal noise jangka pendek, H1 memberi sinyal tren intraday,
+  // vol/LP ratio memberi sinyal wash/aktivitas tidak natural.
+  const volatility = clamp(
+    m5 * 0.7 + Math.abs(h1) * 0.2 + volLiqRatio * 1.2 + (txns5m > 80 ? 5 : 0),
+    0, 45
+  );
 
-  // Stop loss: makin tinggi grade makin ketat; melebar saat volatil / LP tipis
-  let slPct = grade === 'A+' ? 8 : grade === 'A' ? 11 : 15;
-  slPct += volatility * 0.35;
-  if (liq > 0 && liq < 15000) slPct += 4;
-  else if (liq > 0 && liq < 40000) slPct += 2;
-  slPct = clamp(slPct, 6, 26);
+  // ── Stop Loss: lebih lebar untuk memecoin ──
+  // Base SL per grade (sudah include buffer untuk natural wick):
+  // A+ = 10% (bukan 8%), A = 13% (bukan 11%), B = 17% (bukan 15%)
+  let slPct = grade === 'A+' ? 10 : grade === 'A' ? 13 : 17;
 
-  // Risk:reward dari konviksi + momentum + runner + keyakinan
-  let rr = grade === 'A+' ? 3.0 : grade === 'A' ? 2.4 : 1.9;
-  if (h1 > 25) rr += 0.5;
-  else if (h1 < -5) rr -= 0.3;
-  rr += Math.min(0.8, runnerScore / 100);
-  rr += clamp((confidence - 60) / 100, -0.3, 0.4);
-  rr = clamp(rr, 1.4, 4.0);
+  // Volatilitas tinggi → SL dilebarkan (hindari ke-stop noise)
+  slPct += volatility * 0.3;
 
-  let tpPct = slPct * rr + volatility * 0.4;
-  // HAPUS CAP +90% — exit engine sekarang pakai partial TP bertingkat + trailing
-  tpPct = clamp(tpPct, 12, 200);
+  // Likuiditas tipis → SL lebih lebar (mudah di-manipulasi whale)
+  if (liq > 0 && liq < 12000) slPct += 6;       // micro-cap: sangat volatil
+  else if (liq > 0 && liq < 25000) slPct += 4;  // low-cap: masih riskan
+  else if (liq > 0 && liq < 50000) slPct += 2;  // mid-cap: moderat
+  // Likuiditas > 50000: tidak ada bonus → sudah nyaman
+
+  // Bonding curve: SL sedikit lebih longgar karena harga masih eksplorasi
+  const isBonding = token.phase === 'new' || String(token.lpStatus || '').toLowerCase().includes('bonding');
+  if (isBonding) slPct += 2;
+
+  slPct = clamp(slPct, 8, 28);  // range 8-28% (sebelumnya 6-26%)
+
+  // ── Risk:Reward — REALISTIS untuk memecoin ──
+  // Base RR per grade:
+  // A+ = 2.2 (bukan 3.0) → 2.2:1 sudah sangat baik di memecoin
+  // A  = 1.8 (bukan 2.4)
+  // B  = 1.5 (bukan 1.9)
+  let rr = grade === 'A+' ? 2.2 : grade === 'A' ? 1.8 : 1.5;
+
+  // Momentum H1 kuat → naikkan target moderat
+  if (h1 > 30) rr += 0.4;
+  else if (h1 > 15) rr += 0.2;
+  else if (h1 < -8) rr -= 0.3;
+
+  // Runner score tinggi → beri ruang lebih untuk winner
+  rr += clamp(runnerScore / 120, 0, 0.5);
+
+  // Confidence tinggi → RR lebih baik (setup lebih terkonfirmasi)
+  rr += clamp((confidence - 65) / 100, -0.2, 0.3);
+
+  // Likuiditas besar → RR bisa lebih ambisius (market lebih efisien)
+  if (liq >= 60000) rr += 0.2;
+
+  rr = clamp(rr, 1.2, 2.8);  // range 1.2-2.8 (sebelumnya 1.4-4.0)
+
+  // ── Take Profit: slPct * rr + bonus momentum moderat ──
+  let tpPct = slPct * rr + volatility * 0.25;
+  // Cap TP di 80% — realistis untuk memecoin (sebelumnya 200%)
+  tpPct = clamp(tpPct, 15, 80);
 
   return { slPct: round1(slPct), tpPct: round1(tpPct), rr: round1(rr), volatility: round1(volatility) };
 }
@@ -354,48 +455,70 @@ function reevaluateSignal(signal, liveToken) {
 const gradeRank = { 'A+': 4, A: 3, B: 2, C: 1 };
 
 /**
- * Edge score — skor kualitas komposit untuk merangking sinyal & menyeleksi B.
- * Menggabungkan skor engine, keyakinan, runner, integritas volume, momentum,
- * dikurangi penalti risiko rug. Makin tinggi = makin layak dipertahankan.
+ * Edge score v2 — skor kualitas komposit untuk merangking sinyal & menyeleksi B.
+ *
+ * Rebalance weights untuk realita memecoin:
+ * - Momentum & buy pressure lebih penting dari score analisa statis
+ * - Alpha/narrative lebih berbobot (attention = price driver #1 di memecoin)
+ * - Risk penalty lebih berat (satu red flag bisa membatalkan semua green flag)
+ * - Volume integrity tetap penting (wash trading = false signal)
  */
 export function signalEdge(s) {
   const ex = s.explain || {};
   const runner = Number(ex.runnerSummary?.score || 0);
   const vol = Number(ex.volumeIntegrity || 0);
-  const riskPenalty = { low: 0, medium: 14, high: 34, critical: 70 }[ex.riskNarrative?.level || 'low'] || 0;
-  const momentum = (Number(s.m5) || 0) * 0.6 + clamp(Number(s.h1) || 0, -25, 45) * 0.2;
+  const riskPenalty = { low: 0, medium: 18, high: 42, critical: 80 }[ex.riskNarrative?.level || 'low'] || 0;
+  const momentum = (Number(s.m5) || 0) * 0.7 + clamp(Number(s.h1) || 0, -20, 50) * 0.25;
+  const buyRatio = Number(s.buyRatio || 0.5);
+  const buyBonus = buyRatio >= 0.6 ? (buyRatio - 0.5) * 40 : 0;  // bonus untuk buy pressure kuat
   const alphaScore = Number(s.alphaScore || s.alpha?.alphaScore || 0);
-  return (Number(s.score) || 0) * 0.5
-    + (Number(s.confidence) || 0) * 0.3
-    + runner * 0.25
-    + vol * 0.15
-    + alphaScore * 0.1   // tiebreaker alpha (tidak mengubah gate grade)
+  return (Number(s.score) || 0) * 0.35     // ↓ dari 0.5 — analisa statis kurang penting
+    + (Number(s.confidence) || 0) * 0.25    // ↓ dari 0.3
+    + runner * 0.30                         // ↑ dari 0.25 — momentum adalah segalanya
+    + vol * 0.20                            // ↑ dari 0.15 — integritas volume krusial
+    + alphaScore * 0.20                     // ↑ dari 0.1 — narrative/alpha adalah price driver
     + momentum
+    + buyBonus
     - riskPenalty;
 }
 
 /**
- * Gerbang kualitas grade B (High Risk) — sangat ketat untuk meminimalkan kalah.
- * Hanya B dengan struktur bersih, momentum tidak negatif, likuiditas memadai,
- * volume kredibel, dan risiko rug rendah yang boleh muncul.
+ * Gerbang kualitas grade B (High Risk) v2 — KALIBRASI ULANG.
+ *
+ * Filosofi baru: B hanya untuk setup yang "hampir A" — struktur bersih,
+ * momentum positif, likuiditas memadai, volume kredibel, risiko rendah.
+ * BUKAN untuk "apa aja yang nggak fail". Filter lebih ketat di:
+ * - Confidence & score (naik)
+ * - Runner score (naik)
+ * - Buy pressure (cek baru)
+ * - Freshness (cek baru — hindari token terlalu tua)
  */
 export function isQualityB(s) {
   const ex = s.explain || {};
   const riskLevel = ex.riskNarrative?.level || 'low';
   const runner = Number(ex.runnerSummary?.score || 0);
   const vol = Number(ex.volumeIntegrity || 0);
-  // Knife-edge dilunakkan: ambang lama dikalibrasi untuk dunia "capped" (sebelum
-  // enrichment). Setelah enrichment, distribusi skor/keyakinan naik, jadi ambang
-  // ketat lama justru over-filter. Safety inti (riskLevel low, likuiditas, score,
-  // confidence) tetap dipertahankan.
-  return Number(s.confidence) >= 65
-    && Number(s.score) >= 58
-    && riskLevel === 'low'
-    && runner >= 42
-    && vol >= 55
-    && Number(s.m5) >= -1
-    && Number(s.h1) >= -4
-    && Number(s.liquidityUsd) >= 25000;
+  const buyRatio = Number(s.buyRatio || 0.5);
+  const ageMin = s.ageMinutes ?? (s.age ? Number(s.age) : null);
+
+  // Core safety: hanya risk level low
+  if (riskLevel !== 'low') return false;
+
+  // Threshold elevated — B harus genuine "nyaris A"
+  if (Number(s.confidence) < 68) return false;    // ↑ dari 65
+  if (Number(s.score) < 60) return false;          // ↑ dari 58
+  if (runner < 45) return false;                   // ↑ dari 42
+  if (vol < 58) return false;                      // ↑ dari 55
+  if (Number(s.m5) < -0.5) return false;           // ↑ dari -1
+  if (Number(s.h1) < -3) return false;             // ↑ dari -4
+  if (Number(s.liquidityUsd) < 30000) return false; // ↑ dari 25000
+
+  // ── Filter baru ──
+  if (buyRatio < 0.53) return false;               // harus ada buy pressure minimal
+  // Hindari token terlalu matang (>8 jam) — momentum biasanya sudah habis
+  if (ageMin != null && ageMin > 480) return false;
+
+  return true;
 }
 
 function sortSignals(a, b) {

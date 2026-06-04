@@ -97,60 +97,82 @@ export function computeAlpha(token, ctx = {}) {
   const totalTx = buys + sells;
   const buyRatio = totalTx > 0 ? buys / totalTx : 0.5;
 
-  // ── 1. Smart money / KOL / whale (maks 26) ──
+  // ── 1. Smart money / KOL / whale (maks 22) — ↓ dari 26 ──
+  // Di memecoin, smart money penting tapi lebih penting momentum + buy pressure
   const smartMoney = Number(flags.smartMoneyCount || 0);
   const whales = Number(flags.whales || 0);
   const hasKol = Boolean(flags.kolDetected);
-  let smartComp = clamp(smartMoney * 6 + whales * 4 + (hasKol ? 12 : 0), 0, 26);
+  let smartComp = clamp(smartMoney * 5 + whales * 3 + (hasKol ? 10 : 0), 0, 22);
   if (hasKol) reasons.push(`KOL terdeteksi memegang ${token.ticker}`);
   else if (smartMoney > 0) reasons.push(`${smartMoney} smart wallet di top holder`);
 
-  // ── 2. Momentum (maks 24) — pakai runner score bila ada, else m5/h1 ──
+  // ── 2. Momentum (maks 28) — ↑ dari 24 ──
+  // Momentum adalah raja di memecoin. Runner score + multi-timeframe price action.
   const runnerScore = Number(runner?.runnerScore || 0);
   let momoComp = runnerScore > 0
-    ? clamp(runnerScore * 0.24, 0, 24)
-    : clamp(Math.max(0, m5) * 1.2 + Math.max(0, Math.min(h1, 60)) * 0.2, 0, 20);
-  if (runnerScore >= 50) reasons.push('Momentum runner kuat');
-  else if (m5 > 5) reasons.push(`Momentum 5m +${m5.toFixed(1)}%`);
+    ? clamp(runnerScore * 0.28, 0, 28)
+    : clamp(Math.max(0, m5) * 1.4 + Math.max(0, Math.min(h1, 60)) * 0.25, 0, 22);
+  if (runnerScore >= 45) reasons.push('Momentum runner kuat');   // ↓ dari 50
+  else if (m5 > 4) reasons.push(`Momentum 5m +${m5.toFixed(1)}%`);
 
-  // ── 3. Narasi / meta (maks 20) ──
-  const narrComp = clamp(10 + meta.narrativeScore, 0, 20);
+  // ── 3. Narasi / meta (maks 22) — ↑ dari 20 ──
+  // Narrative/attention adalah price driver #1 di memecoin
+  const narrComp = clamp(12 + meta.narrativeScore, 0, 22);
   if (meta.isFirstMover) reasons.push(`First-mover di meta "${meta.label}"`);
   else if (meta.isHotMeta && !meta.isSaturated) reasons.push(`Meta "${meta.label}" sedang panas`);
   else if (meta.isSaturated) reasons.push(`Meta "${meta.label}" sudah saturated (hati-hati copycat)`);
 
-  // ── 4. Kesehatan holder (maks 14) ──
-  let holderComp = 7;
+  // ── 4. Kesehatan holder (maks 12) — ↓ dari 14 ──
+  let holderComp = 6;
   const top10 = typeof flags.top10Pct === 'number' ? flags.top10Pct : null;
   const commonFunder = typeof flags.commonFunderWallets === 'number' ? flags.commonFunderWallets : null;
   if (top10 != null) {
-    if (top10 < 30) holderComp += 5;
-    else if (top10 > 60) holderComp -= 6;
+    if (top10 < 28) holderComp += 5;
+    else if (top10 > 58) holderComp -= 5;
   }
   if (commonFunder != null) {
     if (commonFunder <= 1) holderComp += 2;
-    else if (commonFunder >= 5) holderComp -= 5;
+    else if (commonFunder >= 6) holderComp -= 5;
   }
-  holderComp = clamp(holderComp, 0, 14);
+  holderComp = clamp(holderComp, 0, 12);
 
-  // ── 5. Fase / bonding momentum (maks 10) ──
+  // ── 5. Fase / bonding momentum (maks 12) — ↑ dari 10 ──
   let phaseComp = 0;
-  if (phase.key === 'graduating') { phaseComp = 10; reasons.push('Bonding hampir penuh — momen pre-migrasi'); }
-  else if (phase.key === 'new') phaseComp = clamp(phase.bondingProgress / 12, 0, 8);
+  if (phase.key === 'graduating') { phaseComp = 12; reasons.push('Bonding hampir penuh — momen pre-migrasi'); }
+  else if (phase.key === 'new') phaseComp = clamp(phase.bondingProgress / 10, 0, 10);
   else if (phase.key === 'migrated') phaseComp = 5;
 
-  // ── 6. Buy pressure (maks 6) ──
-  const buyComp = totalTx >= 3 ? clamp((buyRatio - 0.5) * 24, 0, 6) : 0;
+  // ── 6. Buy pressure (maks 14) — ↑↑ dari 6 ──
+  // BUY PRESSURE ADALAH SEGALANYA DI MEMECOIN.
+  // Weight dinaikkan signifikan karena ini indikator paling real-time.
+  const buyComp = totalTx >= 5
+    ? clamp((buyRatio - 0.48) * 40 + Math.min(buys / 4, 4), 0, 14)
+    : 0;
+  if (buyRatio >= 0.65 && buys >= 10) reasons.push('Buy pressure sangat kuat — demand real');
+  else if (buyRatio >= 0.58 && buys >= 8) reasons.push('Buy pressure sehat');
 
-  // ── 7. Social spike opsional (maks 8) — hanya kalau disuplai (paste-scan) ──
+  // ── 7. Volume health (BARU — maks 8) ──
+  // Volume yang sehat vs wash trading. Vol/LP ratio rendah + txns cukup = organik.
+  let volumeHealthComp = 0;
+  const volLiqRatio = Number(flags.volumeLiquidityRatio || 0);
+  const txns5m = Number(flags.txns5m || 0);
+  if (volLiqRatio > 0 && volLiqRatio < 3 && txns5m >= 15) {
+    volumeHealthComp = clamp(8 - volLiqRatio * 1.5, 0, 8);
+    if (volumeHealthComp >= 5) reasons.push('Volume organik — bukan wash trading');
+  } else if (volLiqRatio >= 8) {
+    volumeHealthComp = -3; // penalti untuk volume tidak natural
+  }
+  volumeHealthComp = clamp(volumeHealthComp, -3, 8);
+
+  // ── 8. Social spike opsional (maks 6) — ↓ dari 8 ──
   let socialComp = 0;
   if (social && Number.isFinite(Number(social.score))) {
-    socialComp = clamp(Number(social.score) * 0.08, 0, 8);
+    socialComp = clamp(Number(social.score) * 0.06, 0, 6);
     if (social.volumeSpike?.spike) reasons.push('Lonjakan perbincangan sosial terdeteksi');
   }
 
   const alphaScore = clamp(Math.round(
-    smartComp + momoComp + narrComp + holderComp + phaseComp + buyComp + socialComp
+    smartComp + momoComp + narrComp + holderComp + phaseComp + buyComp + volumeHealthComp + socialComp
   ), 0, 100);
 
   return {
@@ -164,16 +186,17 @@ export function computeAlpha(token, ctx = {}) {
       holder: Math.round(holderComp),
       phase: Math.round(phaseComp),
       buyPressure: Math.round(buyComp),
+      volumeHealth: Math.round(volumeHealthComp),
       social: Math.round(socialComp)
     },
     reasons: reasons.slice(0, 5)
   };
 }
 
-/** Label tier alpha untuk UI. */
+/** Label tier alpha untuk UI — threshold disesuaikan dengan bobot baru. */
 export function alphaTier(score) {
-  if (score >= 75) return { label: 'Alpha Tinggi', tone: 'good' };
-  if (score >= 55) return { label: 'Alpha Menengah', tone: 'watch' };
-  if (score >= 35) return { label: 'Alpha Rendah', tone: 'warn' };
+  if (score >= 70) return { label: 'Alpha Tinggi', tone: 'good' };       // ↓ dari 75
+  if (score >= 50) return { label: 'Alpha Menengah', tone: 'watch' };     // ↓ dari 55
+  if (score >= 30) return { label: 'Alpha Rendah', tone: 'warn' };        // ↓ dari 35
   return { label: 'Minim Alpha', tone: 'muted' };
 }

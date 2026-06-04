@@ -51,7 +51,7 @@ describe('computeAlpha', () => {
 
   it('gives a graduating token the pre-migration phase bonus', () => {
     const grad = computeAlpha(token({ phase: 'new', lpStatus: 'Bonding curve', flags: { bondingCurveProgress: 90 } }));
-    expect(grad.components.phase).toBe(10);
+    expect(grad.components.phase).toBe(12);
     expect(grad.phase.key).toBe('graduating');
   });
 

@@ -55,7 +55,8 @@ describe('gradeSignal — positive path', () => {
     const out = gradeSignal(strongToken(), strongReport, cleanRug, strongRunner);
     expect(out.grade).toBe('A+');
     expect(out.side).toBe('BUY');
-    expect(out.confidence).toBeGreaterThan(80);
+    // v2 confidence: report.confidence*0.75 + narrativeBonus*0.6 + runner*0.12 = 60 + 0 + 8.4 ≈ 68
+    expect(out.confidence).toBeGreaterThan(65);
   });
 
   it('downgrades A+ to A when top holders are concentrated', () => {
@@ -105,7 +106,7 @@ describe('signalEdge', () => {
 
 describe('isQualityB', () => {
   const goodB = {
-    confidence: 70, score: 62, m5: 1, h1: 2, liquidityUsd: 40000,
+    confidence: 70, score: 62, m5: 1, h1: 2, liquidityUsd: 40000, buyRatio: 0.55,
     explain: { riskNarrative: { level: 'low' }, runnerSummary: { score: 50 }, volumeIntegrity: 60 }
   };
 

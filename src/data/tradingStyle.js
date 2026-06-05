@@ -131,13 +131,13 @@ export function momentumScore(signal, style) {
 
   // Bonus momentum jangka pendek (style hyper lebih sensitif ke m5)
   const m5Weight = style.id === 'hyper' ? 1.4 : style.id === 'balanced' ? 1.0 : 0.6;
-  // Momentum SWEET-SPOT: hadiah naik untuk m5 sehat (s.d. ~12%) lalu MENURUN untuk
-  // m5 parabolik. Sebelumnya hadiah m5 linear tanpa batas → agent selalu memilih
-  // token yang paling baru pump (entry di pucuk) sehingga koreksi normal langsung
-  // kena SL. Kurva ini lebih memilih momentum yang masih punya ruang naik.
-  const healthyM5 = Math.min(Math.max(m5, -20), 12);
-  const excessM5 = Math.max(0, m5 - 12);
-  const m5Signal = healthyM5 * m5Weight - excessM5 * (m5Weight * 0.9);
+  // Momentum SWEET-SPOT: hadiah naik untuk m5 sehat (s.d. ~25%) lalu MENURUN untuk
+  // m5 parabolik. Sebelumnya batas 12% terlalu ketat — memecoin early runner sering
+  // punya m5 15-30% dan justru itu sinyal kuat. Batas dinaikkan ke 25% agar tidak
+  // menghukum momentum awal yang valid.
+  const healthyM5 = Math.min(Math.max(m5, -20), 25);
+  const excessM5 = Math.max(0, m5 - 25);
+  const m5Signal = healthyM5 * m5Weight - excessM5 * (m5Weight * 0.7);
   // Penalti "sudah lari jauh": h1 sangat tinggi = peluang entry telat (exit liquidity).
   const extendedPenalty = h1 > 120 ? Math.min(25, (h1 - 120) * 0.12) : 0;
   const momentum = m5Signal + Math.max(-20, Math.min(40, h1)) * 0.25 - extendedPenalty;

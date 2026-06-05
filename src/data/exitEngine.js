@@ -92,7 +92,7 @@ function getTrailDrawdownPct(multiple, narrative = null) {
  * - dead = true, gentle = true → partial exit 50% sisa, sisanya trail
  */
 function detectMomentumDeath(ca, currentPnlPct, narrative = null) {
-  if (currentPnlPct < 10) return { dead: false, gentle: false };
+  if (currentPnlPct < 5) return { dead: false, gentle: false };
 
   const velocity = getVelocity(ca);
   if (!velocity || velocity.snapshots < 3) return { dead: false, gentle: false };
@@ -157,6 +157,25 @@ export function computeExitActions(trade, currentPrice, liveToken, currentSignal
   let newStop = sl;
   let newStatus = 'ACTIVE';
   let reason = null;
+
+  // 0. Dynamic SL tightening — naikkan proteksi saat harga bergerak menguntungkan,
+  // bahkan sebelum T1 tercapai. Ini mencegah "pump kecil lalu dump" yang sering
+  // terjadi di memecoin.
+  if (!slMovedToBreakeven && currentPnlPct > 0) {
+    const dynamicStop = currentPnlPct >= 18
+      ? entry * 1.08 // profit +8% locked
+      : currentPnlPct >= 12
+        ? entry * 1.04 // profit +4% locked
+        : currentPnlPct >= 7
+          ? entry // breakeven
+          : currentPnlPct >= 3
+            ? entry * 0.97 // -3% saja
+            : sl;
+    if (dynamicStop > newStop) {
+      newStop = dynamicStop;
+      actions.push({ type: 'MOVE_STOP', newStop: dynamicStop, reason: `Dynamic tighten @ +${currentPnlPct.toFixed(1)}%` });
+    }
+  }
 
   // 1. Hard SL hit — absolute stop, tidak boleh dilanggar
   if (currentPrice <= sl) {

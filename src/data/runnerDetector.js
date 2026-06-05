@@ -30,8 +30,8 @@ export function analyzeRunner(token, regimeBaseline = null) {
   } else if (liquidityUsd < minLiquidity) {
     return emptyResult();
   }
-  if (h1 < -10) return emptyResult();
-  if (m5 < -5) return emptyResult();
+  if (h1 < -15) return emptyResult();
+  if (m5 < -8) return emptyResult();
   if (sells5m > buys5m * 1.6) return emptyResult();
 
   // Volume ratio threshold juga relatif

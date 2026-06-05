@@ -210,12 +210,13 @@ export function deriveSlTp({ grade, confidence, token, runner }) {
   // Proxy volatilitas (0..40)
   const volatility = clamp(m5 * 0.8 + Math.abs(h1) * 0.25 + volLiqRatio * 1.5, 0, 40);
 
-  // Stop loss: makin tinggi grade makin ketat; melebar saat volatil / LP tipis
-  let slPct = grade === 'A+' ? 8 : grade === 'A' ? 11 : 15;
-  slPct += volatility * 0.35;
-  if (liq > 0 && liq < 15000) slPct += 4;
-  else if (liq > 0 && liq < 40000) slPct += 2;
-  slPct = clamp(slPct, 6, 26);
+  // Stop loss: memecoin volatil — SL terlalu ketat = sering ke-stop noise.
+  // Base SL dilebarkan; volatilitas tetap ditambah tapi dengan faktor lebih kecil.
+  let slPct = grade === 'A+' ? 12 : grade === 'A' ? 16 : 20;
+  slPct += volatility * 0.25;
+  if (liq > 0 && liq < 15000) slPct += 3;
+  else if (liq > 0 && liq < 40000) slPct += 1.5;
+  slPct = clamp(slPct, 8, 28);
 
   // Risk:reward dari konviksi + momentum + runner + keyakinan
   let rr = grade === 'A+' ? 3.0 : grade === 'A' ? 2.4 : 1.9;
